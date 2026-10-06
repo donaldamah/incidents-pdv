@@ -1,0 +1,123 @@
+/* Suivi des incidents PDV — pensé pour le téléphone d'abord */
+:root {
+  --bleu: #0b5cab;
+  --bleu-clair: #e8f0fa;
+  --texte: #1c2430;
+  --gris: #5d6b7a;
+  --bord: #d8dee6;
+  --fond: #f3f5f8;
+  --carte: #ffffff;
+  --rouge: #c62828;
+  --orange: #b85c00;
+  --vert: #2e7d32;
+  --rayon: 12px;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--texte);
+  background: var(--fond);
+}
+a { color: var(--bleu); }
+.centre { text-align: center; padding: 48px 16px; color: var(--gris); }
+
+/* --- Barre du haut --- */
+.barre {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; background: var(--bleu); color: #fff;
+}
+.barre h1 { font-size: 18px; margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.barre a, .barre button {
+  color: #fff; background: rgba(255,255,255,.15); border: 0; border-radius: 8px;
+  padding: 8px 12px; font: inherit; font-size: 15px; text-decoration: none; cursor: pointer;
+}
+
+main { max-width: 720px; margin: 0 auto; padding: 12px 16px 48px; }
+.info { color: var(--gris); font-size: 14px; margin: 4px 0 12px; }
+
+/* --- Formulaires --- */
+label { display: block; font-weight: 600; margin: 14px 0 6px; }
+input, select, textarea {
+  width: 100%; font: inherit; font-size: 16px; /* 16px : évite le zoom automatique sur iPhone */
+  padding: 12px; border: 1px solid var(--bord); border-radius: 10px; background: #fff; color: var(--texte);
+}
+textarea { min-height: 88px; resize: vertical; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--bleu); outline-offset: 0; border-color: var(--bleu); }
+.bouton {
+  display: block; width: 100%; margin-top: 18px; padding: 14px;
+  font: inherit; font-weight: 600; color: #fff; background: var(--bleu);
+  border: 0; border-radius: 10px; cursor: pointer;
+}
+.bouton:disabled { opacity: .6; }
+.bouton.secondaire { background: #fff; color: var(--bleu); border: 1px solid var(--bleu); }
+.bouton.danger { background: #fff; color: var(--rouge); border: 1px solid var(--rouge); }
+.erreur { color: var(--rouge); margin-top: 12px; }
+.aide { color: var(--gris); font-size: 14px; margin-top: 6px; }
+
+.panneau { background: var(--carte); border-radius: var(--rayon); padding: 16px; margin: 12px 0; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.panneau h2 { font-size: 17px; margin: 0 0 4px; }
+.connexion { max-width: 420px; margin: 8vh auto 0; }
+.connexion h1 { color: var(--bleu); font-size: 24px; margin: 0 0 4px; }
+
+/* --- Filtres --- */
+.filtres { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.filtres select, .filtres input { padding: 10px; }
+.filtres .large { grid-column: 1 / -1; }
+.resume { font-size: 14px; color: var(--gris); margin: 6px 0 10px; }
+
+/* --- Cartes d'incident --- */
+.carte {
+  display: block; text-decoration: none; color: inherit;
+  background: var(--carte); border-radius: var(--rayon); padding: 12px 14px; margin-bottom: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06); border-left: 5px solid var(--bord);
+}
+.carte:active { background: var(--bleu-clair); }
+.carte .l1 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.carte .site { font-weight: 600; margin-top: 6px; }
+.carte .detail { color: var(--gris); font-size: 14px; }
+.carte .motif { font-size: 14px; margin-top: 4px; }
+.perte { font-weight: 700; white-space: nowrap; }
+.carte.s-rouge  { border-left-color: var(--rouge); }
+.carte.s-bleu   { border-left-color: var(--bleu); }
+.carte.s-orange { border-left-color: var(--orange); }
+.carte.s-vert   { border-left-color: var(--vert); }
+.carte.s-gris   { border-left-color: #9aa5b1; }
+
+.badge { display: inline-block; font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 99px; white-space: nowrap; }
+.badge.s-rouge  { background: #fde8e8; color: var(--rouge); }
+.badge.s-bleu   { background: var(--bleu-clair); color: var(--bleu); }
+.badge.s-orange { background: #fff1e0; color: var(--orange); }
+.badge.s-vert   { background: #e6f4e7; color: var(--vert); }
+.badge.s-gris   { background: #eceff3; color: var(--gris); }
+
+/* --- Fiche --- */
+.entete-fiche { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.entete-fiche h2 { font-size: 19px; margin: 0; }
+.chiffres { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin: 0; }
+.chiffres div { min-width: 0; }
+.chiffres dt { font-size: 13px; color: var(--gris); }
+.chiffres dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.lecture { white-space: pre-wrap; }
+.trace { font-size: 13px; color: var(--gris); margin-top: 8px; }
+.deux { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.positif { color: var(--vert); }
+.negatif { color: var(--rouge); }
+
+/* --- Comptes (admin) --- */
+.compte { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--bord); }
+.compte:first-of-type { border-top: 0; }
+.compte .qui { flex: 1; min-width: 0; }
+.compte .qui div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compte button { flex: none; width: auto; margin: 0; padding: 8px 12px; font-size: 14px; }
+
+#toast {
+  position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 10;
+  max-width: 480px; margin: 0 auto; padding: 12px 16px; border-radius: 10px;
+  background: #1c2430; color: #fff; text-align: center;
+  opacity: 0; transform: translateY(12px); transition: .2s; pointer-events: none;
+}
+#toast.visible { opacity: 1; transform: none; }
