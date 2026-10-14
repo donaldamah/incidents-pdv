@@ -650,7 +650,7 @@ function tableKpi(colonnes, lignes) {
 }
 
 // Blocs communs : détail du jour J, mois en cours (avec barres), top des forfaits
-function blocsIndicateurs(d, sansCaJour) {
+function blocsIndicateurs(d, sansCaJour, libCa = 'CA sell out') {
   const J = d.jour.dates.j;
   const dj = d.jour.dates, pm = d.mois.periodes;
   const ligneJour = (nom, x) => [nom, nb(x.j), ['s1', 'm1', 'y1'].map((k) => varHtml(x.j, x[k]))];
@@ -677,12 +677,12 @@ function blocsIndicateurs(d, sansCaJour) {
   return `<section class="bloc">
       <h2 class="bloc-titre">${LOS}Le ${jm(J)} en détail</h2>
       ${tableKpi([['S-1', jm(dj.s1)], ['M-1', jm(dj.m1)], ['Y-1', dj.y1 ? jm(dj.y1) + '/' + dj.y1.slice(2, 4) : '—']], [
-        ...(sansCaJour ? [] : [ligneJour('CA sell out', d.jour.ca)]), ligneJour('PDV actifs', d.jour.pdv), ligneJour('Abonnés actifs', d.jour.abonnes)])}
+        ...(sansCaJour ? [] : [ligneJour(libCa, d.jour.ca)]), ligneJour('PDV actifs', d.jour.pdv), ligneJour('Abonnés actifs', d.jour.abonnes)])}
     </section>
     <section class="bloc">
       <h2 class="bloc-titre">${LOS}${MOIS_LONGS[moisJ]}, du 1er au ${+J.slice(8)}</h2>
       ${tableKpi([['vs M-1', periode(pm.m1, J)], ['vs Y-1', periode(pm.y1, J)]], [
-        ligneMois('CA sell out', d.mois.ca, ' F'), ligneMois('PDV actifs', d.mois.pdv), ligneMois('Abonnés actifs', d.mois.abonnes)])}
+        ligneMois(libCa, d.mois.ca, ' F'), ligneMois('PDV actifs', d.mois.pdv), ligneMois('Abonnés actifs', d.mois.abonnes)])}
       ${barres}
     </section>
     ${f.length ? `<section class="bloc">
@@ -694,10 +694,10 @@ function blocsIndicateurs(d, sansCaJour) {
     </section>` : ''}`;
 }
 
-function heroMois(libelle, d) {
+function heroMois(libelle, d, mesure = 'CA sell out ') {
   const J = d.jour.dates.j;
   return `<div class="hero">
-      <div class="hero-label">${esc(libelle)} · CA sell out du 1er au ${+J.slice(8)} ${MOIS[+J.slice(5, 7) - 1]}</div>
+      <div class="hero-label">${esc(libelle)} · ${mesure}du 1er au ${+J.slice(8)} ${MOIS[+J.slice(5, 7) - 1]}</div>
       <div class="hero-val">${nb(d.mois.ca.m)}<small>FCFA</small></div>
       <div class="comps">
         ${comp('vs M-1', periode(d.mois.periodes.m1, J), d.mois.ca.m, d.mois.ca.m1)}
@@ -813,7 +813,7 @@ function ecranTableau() {
   } else {
     const vms = tb.vms.filter((v) => !S.zoneFiltre || v.zone === S.zoneFiltre);
     const zones = [...tb.zones].sort((a, b) => a.cle.localeCompare(b.cle));
-    tete = heroMois('Zones 1 et 2', d);
+    tete = heroMois('Sell out Zones 1-2', d, '');
     corps = `<section class="bloc">
         <h2 class="bloc-titre">${LOS}Par zone</h2>
         ${zones.map((z) => {
@@ -830,7 +830,7 @@ function ecranTableau() {
         <div class="puces defile" role="group" aria-label="Zone" style="margin-bottom:8px">${[['', 'Toutes'], ['ZONE1', 'Zone 1'], ['ZONE2', 'Zone 2']].map(([k, t]) =>
           `<button type="button" class="puce" data-zone="${k}" aria-pressed="${S.zoneFiltre === k}">${t}</button>`).join('')}</div>
         ${classement(vms, !S.zoneFiltre)}
-      </section>${blocsIndicateurs(d)}`;
+      </section>${blocsIndicateurs(d, false, 'Sell out Zones 1-2')}`;
   }
 
   app.innerHTML = `<header class="app-tete">${teteLigne()}${tete}</header>
