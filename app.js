@@ -77,7 +77,22 @@ function variation(a, b) {
   const t = (v > 0.05 ? '+' : v < -0.05 ? '−' : '') + Math.abs(v).toFixed(1).replace('.', ',') + ' %';
   return { t, c: v > 0.05 ? 'hausse' : v < -0.05 ? 'baisse' : 'stable', v };
 }
-const varHtml = (a, b, cls = 'var') => { const x = variation(a, b); return `<span class="${cls} ${x.c}">${x.t}</span>`; };
+// Écart de a par rapport à b (« −100 090 »), en unités de l'indicateur
+function ecart(a, b) {
+  if (a == null || b == null) return { t: '—', c: 'stable' };
+  const d = Math.round(a) - Math.round(b);
+  return { t: (d > 0 ? '+' : d < 0 ? '−' : '') + nb(Math.abs(d)), c: d > 0 ? 'hausse' : d < 0 ? 'baisse' : 'stable' };
+}
+// Le VM voit l'écart seul ; superviseur, direction et administrateurs voient aussi le taux
+const voitTaux = () => S.profil.role !== 'vm';
+const ecartHtml = (a, b, cls = 'var') => {
+  const e = ecart(a, b);
+  return `<span class="${cls} ${e.c}">${e.t}${voitTaux() ? `<small>${variation(a, b).t}</small>` : ''}</span>`;
+};
+
+// Mise en page « grand écran » (ordinateur) : onglets en haut, colonnes, tableaux
+const GRAND = window.matchMedia('(min-width: 1000px)');
+GRAND.addEventListener('change', () => router());
 
 const ICONES = {
   incidents: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
@@ -150,17 +165,19 @@ app.addEventListener('click', (ev) => {
 const estDirection = () => ['direction', 'admin'].includes(S.profil.role);
 const commentaireManquant = () => S.profil.role === 'vm' && S.tb?.ligne && !S.commentaires[S.profil.login];
 
-function teteLigne() {
+// Sur grand écran, les onglets sont dans le bandeau, entre la marque et le nom
+function teteLigne(actif) {
   const p = S.profil;
   return `<div class="tete-ligne"><div class="marque">${LOS}Incidents PDV</div>
+    ${GRAND.matches ? `<nav class="onglets">${liensNav(actif, 'onglet')}</nav>` : ''}
     <div class="qui"><b>${esc(p.nom)}</b>${esc(ROLES[p.role])}${p.zone ? ' · ' + esc(zoneLib(p.zone)) : ''}</div></div>`;
 }
-function teteRetour(lien, texte, droite = '') {
-  return `<div class="tete-ligne"><a class="retour" href="${lien}">${ico('gauche')}${esc(texte)}</a>
+function teteRetour(lien, texte, droite = '', actif = '') {
+  return `${GRAND.matches ? teteLigne(actif) : ''}<div class="tete-ligne"><a class="retour" href="${lien}">${ico('gauche')}${esc(texte)}</a>
     <div class="qui">${droite}</div></div>`;
 }
 
-function nav(actif) {
+function liensNav(actif, classe) {
   const ordre = estDirection() ? ['tableau', 'incidents', 'compte'] : ['incidents', 'tableau', 'compte'];
   const lib = { tableau: 'Tableau de bord', incidents: 'Incidents', compte: 'Compte' };
   const aJustifier = S.profil.role === 'vm' ? S.incidents.filter((i) => i.statut === 'À justifier').length : 0;
@@ -169,9 +186,10 @@ function nav(actif) {
     tableau: commentaireManquant() ? '<span class="pastille point" aria-label="commentaire à saisir"></span>' : '',
     compte: '',
   };
-  return `<nav class="app-nav">${ordre.map((k) => `<a class="nav-btn" href="#/${k}" ${k === actif ? 'aria-current="page"' : ''}>
-    ${ico(k)}${lib[k]}${marque[k]}</a>`).join('')}</nav>`;
+  return ordre.map((k) => `<a class="${classe}" href="#/${k}" ${k === actif ? 'aria-current="page"' : ''}>
+    ${ico(k)}${lib[k]}${marque[k]}</a>`).join('');
 }
+const nav = (actif) => (GRAND.matches ? '' : `<nav class="app-nav">${liensNav(actif, 'nav-btn')}</nav>`);
 
 // ---------------------------------------------------------------------------
 // Démarrage et connexion
@@ -268,8 +286,8 @@ function ecranMotDePasse(obligatoire) {
   app.innerHTML = obligatoire
     ? `<div class="connexion"><div class="marque">${LOS}Incidents PDV</div>
         <p class="accroche">${esc(S.profil.nom)}</p>${formulaire}</div>`
-    : `<header class="app-tete">${teteRetour('#/compte', 'Compte')}</header>
-       <main class="app-corps"><section class="bloc">${formulaire}</section></main>${nav('compte')}`;
+    : `<header class="app-tete">${teteRetour('#/compte', 'Compte', '', 'compte')}</header>
+       <main class="app-corps etroit"><section class="bloc">${formulaire}</section></main>${nav('compte')}`;
   if (obligatoire) $('#sortir').onclick = deconnecter;
   $('#f').onsubmit = async (ev) => {
     ev.preventDefault();
@@ -392,7 +410,7 @@ function router() {
   if (!S.profil || S.profil.doit_changer_mdp) return;
   const h = location.hash;
   const m = h.match(/^#\/incident\/(\d+)$/);
-  if (m) return ecranFiche(Number(m[1]));
+  if (m) return GRAND.matches ? ecranListe(Number(m[1])) : ecranFiche(Number(m[1]));
   if (h === '#/admin' && S.profil.role === 'admin') return ecranAdmin();
   if (h === '#/compte') return ecranCompte();
   if (h === '#/mot-de-passe') return ecranMotDePasse(false);
@@ -432,7 +450,8 @@ function nomDeLogin(login) {
   return `${m.slice(1).join(' ').toUpperCase()} ${m[0].charAt(0).toUpperCase()}${m[0].slice(1)}`;
 }
 
-function ecranListe() {
+// Sur grand écran, la fiche de l'incident « sel » s'ouvre à droite de la liste
+function ecranListe(sel = null) {
   const p = S.profil;
   const f = S.filtres;
   const base = S.incidents.filter((i) => (!f.zone || i.zone === f.zone) && (!f.vm || i.vm === f.vm));
@@ -449,34 +468,45 @@ function ecranListe() {
   const perte = ouverts.reduce((s, i) => s + (Number(i.perte_estimee) || 0), 0);
   const liste = incidentsFiltres();
   const dates = S.etat.filter((e) => !p.zone || e.zone === p.zone).map((e) => e.derniere_date).sort();
+  const grand = GRAND.matches;
+  const choisi = grand && sel != null ? S.incidents.find((x) => x.id === sel) : null;
 
-  app.innerHTML = `<header class="app-tete">${teteLigne()}
-      <div class="resume-inc">
-        <div><b>${ouverts.length}</b><span>incident${ouverts.length > 1 ? 's' : ''} ouvert${ouverts.length > 1 ? 's' : ''}</span></div>
-        <div><b>${fcfa(perte)}</b><span>de perte estimée</span></div>
-      </div>
-      ${commentaireManquant() ? `<a class="alerte" href="#/tableau" data-vers="bloc-com">${ico('bulle', 1)}<span>Commentaire du jour à saisir</span>${ico('droite', 1)}</a>` : ''}
-    </header>
-    <main class="app-corps">
-      <div class="puces defile" role="group" aria-label="Statut" id="f-statut">${choix.map(([v, t]) =>
+  const filtres = `<div class="puces defile" role="group" aria-label="Statut" id="f-statut">${choix.map(([v, t]) =>
         `<button type="button" class="puce" data-statut="${esc(v)}" aria-pressed="${f.statut === v}">${esc(t)}<span class="n">${compte(v)}</span></button>`).join('')}</div>
-      ${voitZones || voitVms ? `<div class="filtres">
+      <div class="filtres">
         ${voitZones ? `<select id="f-zone" aria-label="Zone"><option value="">Toutes zones</option>
           ${zones.map((z) => `<option value="${z}" ${f.zone === z ? 'selected' : ''}>${zoneLib(z)}</option>`).join('')}
           </select>` : ''}
         ${voitVms ? `<select id="f-vm" class="${voitZones ? '' : 'large'}" aria-label="VM"><option value="">Tous les VM</option>
           ${vms.map((v) => `<option value="${esc(v)}" ${f.vm === v ? 'selected' : ''}>${esc(nomVm(v))}</option>`).join('')}
           </select>` : ''}
-      </div>` : ''}
-      <input id="f-recherche" type="search" placeholder="Rechercher : Stk, site, motif…"
-             value="${esc(f.recherche)}" aria-label="Rechercher">
+        <input id="f-recherche" class="large" type="search" placeholder="Rechercher : Stk, site, motif…"
+               value="${esc(f.recherche)}" aria-label="Rechercher">
+      </div>
       <p class="resume"><span>${liste.length} incident${liste.length > 1 ? 's' : ''} · ventes au ${dates.length ? jj(dates[0]) : '—'}</span>
-        <button type="button" class="lien" id="actualiser">Actualiser</button></p>
-      <div class="inc-liste" id="cartes">${liste.slice(0, S.affiches).map(carte).join('')
-        || '<p class="centre">Aucun incident pour ces critères.</p>'}</div>
-      ${liste.length > S.affiches ? '<button class="btn btn-sec" id="plus">Afficher plus</button>' : ''}
-      <p class="aide">Incidents en cours et incidents repris depuis moins de ${JOURS_HISTORIQUE} jours.</p>
-    </main>
+        <button type="button" class="lien" id="actualiser">Actualiser</button></p>`;
+  const affiches = liste.slice(0, S.affiches);
+  const vide = '<p class="centre">Aucun incident pour ces critères.</p>';
+  const suite = `${liste.length > S.affiches ? '<button class="btn btn-sec" id="plus">Afficher plus</button>' : ''}
+      <p class="aide">Incidents en cours et incidents repris depuis moins de ${JOURS_HISTORIQUE} jours.</p>`;
+
+  const corps = grand
+    ? `<div class="colonnes inc-col">
+        <section class="bloc col-princ">${filtres}
+          ${affiches.length ? tableIncidents(affiches, sel) : vide}${suite}</section>
+        <aside class="col-cote panneau" aria-label="Fiche de l'incident">${choisi ? fiche(choisi, true)
+          : '<section class="bloc"><p class="aide" style="margin:0">Choisissez un incident dans la liste pour voir sa fiche ici.</p></section>'}</aside>
+      </div>`
+    : `${filtres}<div class="inc-liste" id="cartes">${affiches.map(carte).join('') || vide}</div>${suite}`;
+
+  app.innerHTML = `<header class="app-tete">${teteLigne('incidents')}
+      <div class="resume-inc">
+        <div><b>${ouverts.length}</b><span>incident${ouverts.length > 1 ? 's' : ''} ouvert${ouverts.length > 1 ? 's' : ''}</span></div>
+        <div><b>${fcfa(perte)}</b><span>de perte estimée</span></div>
+      </div>
+      ${commentaireManquant() ? `<a class="alerte" href="#/tableau" data-vers="bloc-com">${ico('bulle', 1)}<span>Commentaire du jour à saisir</span>${ico('droite', 1)}</a>` : ''}
+    </header>
+    <main class="app-corps">${corps}</main>
     ${nav('incidents')}`;
 
   const changer = (cle, valeur) => {
@@ -484,7 +514,7 @@ function ecranListe() {
     if (cle === 'zone') S.filtres.vm = '';
     S.affiches = TAILLE_PAGE;
     garderFiltres();
-    ecranListe();
+    ecranListe(sel);
   };
   $('#f-statut').onclick = (ev) => {
     const b = ev.target.closest('[data-statut]');
@@ -499,17 +529,31 @@ function ecranListe() {
       S.filtres.recherche = ev.target.value;
       garderFiltres();
       const champ = ev.target.selectionStart;
-      ecranListe();
+      const y = window.scrollY;
+      ecranListe(sel);
+      window.scrollTo(0, y);
       const r = $('#f-recherche');
       r.focus();
       r.setSelectionRange(champ, champ);
     }, 300);
   };
-  if ($('#plus')) $('#plus').onclick = () => { S.affiches += TAILLE_PAGE; ecranListe(); };
+  if ($('#plus')) $('#plus').onclick = () => { S.affiches += TAILLE_PAGE; ecranListe(sel); };
   $('#actualiser').onclick = actualiser;
-  $('#cartes').onclick = () => { S.defilement = window.scrollY; };
   const alerte = $('.alerte');
   if (alerte) alerte.onclick = () => { S.defilerVers = alerte.dataset.vers; };
+  if (grand) {
+    // Toute la ligne est cliquable ; le lien du site reste la cible au clavier
+    $('main').querySelector('.inc-t')?.addEventListener('click', (ev) => {
+      const tr = ev.target.closest('tr[data-id]');
+      if (!tr) return;
+      ev.preventDefault();
+      S.defilement = window.scrollY;
+      location.hash = `#/incident/${tr.dataset.id}`;
+    });
+    if (choisi) brancherFiche(choisi.id);
+  } else {
+    $('#cartes').onclick = () => { S.defilement = window.scrollY; };
+  }
   window.scrollTo(0, S.defilement);
 }
 
@@ -526,13 +570,47 @@ function carte(i) {
   </a>`;
 }
 
+// Grand écran : une ligne par incident
+function tableIncidents(liste, sel) {
+  const voitVm = S.profil.role !== 'vm';
+  return `<div class="tab-defile"><table class="inc-t">
+    <thead><tr><th>Statut</th><th>Site</th><th>Numéro Stk</th>${voitVm ? '<th>VM</th>' : ''}<th>Incident</th>
+      <th>Depuis</th><th>Motif</th><th class="n">Perte estimée</th></tr></thead>
+    <tbody>${liste.map((i) => {
+      const repris = i.statut === 'Repris';
+      return `<tr data-id="${i.id}" class="${repris ? 'repris' : ''}" ${i.id === sel ? 'aria-current="true"' : ''}>
+        <td><span class="st ${COULEUR[i.statut] || 'st-repris'}">${LOS}${esc(i.statut)}</span></td>
+        <td class="fort"><a href="#/incident/${i.id}">${esc(i.site || 'Site non renseigné')}</a></td>
+        <td class="gris">${esc(i.emoov)}</td>
+        ${voitVm ? `<td class="nowrap">${esc(nomVm(i.vm))}</td>` : ''}
+        <td class="nowrap">${esc(i.type_incident)}</td>
+        <td class="nowrap">${repris && i.date_reprise ? `repris le ${jm(i.date_reprise)}` : jm(i.date_debut)}</td>
+        <td>${i.motif ? esc(i.motif) : '<span class="manquant">À justifier</span>'}</td>
+        <td class="n chiffre">${fcfa(i.perte_estimee)}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
 // ---------------------------------------------------------------------------
-// Fiche d'un incident
+// Fiche d'un incident (pleine page sur téléphone, panneau sur grand écran)
 // ---------------------------------------------------------------------------
 function ecranFiche(id) {
   const i = S.incidents.find((x) => x.id === id);
   if (!i) { location.hash = '#/incidents'; return; }
-  const ecart = i.ecart == null ? '—'
+  app.innerHTML = `<header class="app-tete">
+      ${teteRetour('#/incidents', 'Incidents', `<b>N° ${esc(i.numero ?? '')}</b>${esc(zoneLib(i.zone))}`, 'incidents')}
+      <div class="fiche-site">${esc(i.site || 'Site non renseigné')}</div>
+      <div class="fiche-info">${esc(i.emoov)} · ${esc(i.type_incident)}${S.profil.role !== 'vm' ? ' · ' + esc(nomVm(i.vm)) : ''}</div>
+      <span class="st fiche-st ${COULEUR[i.statut] || 'st-repris'}">${LOS}${esc(i.statut)}</span>
+    </header>
+    <main class="app-corps">${fiche(i, false)}</main>
+    ${nav('incidents')}`;
+  window.scrollTo(0, 0);
+  brancherFiche(id);
+}
+
+// Contenu de la fiche ; « panneau » ajoute en tête ce que le bandeau montre sur téléphone
+function fiche(i, panneau) {
+  const ecartAction = i.ecart == null ? '—'
     : `<span class="${i.ecart >= 0 ? 'hausse' : 'baisse'}">${i.ecart >= 0 ? '+' : ''}${fcfa(i.ecart)}</span>`;
 
   const motif = peutSaisirMotif(i)
@@ -566,13 +644,15 @@ function ecranFiche(id) {
         <div><dt>Fin</dt><dd>${jj(i.action_fin)}</dd></div></dl>`
       : `<p class="lecture" style="color:var(--gris)">Pas encore d'action.${S.profil.role === 'vm' ? ' Elle est saisie par votre superviseur.' : ''}</p>`);
 
-  app.innerHTML = `<header class="app-tete">
-      ${teteRetour('#/incidents', 'Incidents', `<b>N° ${esc(i.numero ?? '')}</b>${esc(zoneLib(i.zone))}`)}
-      <div class="fiche-site">${esc(i.site || 'Site non renseigné')}</div>
-      <div class="fiche-info">${esc(i.emoov)} · ${esc(i.type_incident)}${S.profil.role !== 'vm' ? ' · ' + esc(nomVm(i.vm)) : ''}</div>
-      <span class="st fiche-st ${COULEUR[i.statut] || 'st-repris'}">${LOS}${esc(i.statut)}</span>
-    </header>
-    <main class="app-corps">
+  const tete = panneau ? `<section class="bloc fiche-tete">
+        <div class="fiche-haut"><span class="st ${COULEUR[i.statut] || 'st-repris'}">${LOS}${esc(i.statut)}</span>
+          <a class="fermer" href="#/incidents" aria-label="Fermer la fiche">×</a></div>
+        <h2 class="fiche-site">${esc(i.site || 'Site non renseigné')}</h2>
+        <div class="fiche-info">${esc(i.emoov)} · ${esc(i.type_incident)}${S.profil.role !== 'vm' ? ' · ' + esc(nomVm(i.vm)) : ''}
+          · N° ${esc(i.numero ?? '')} · ${esc(zoneLib(i.zone))}</div>
+      </section>` : '';
+
+  return `${tete}
       <section class="bloc">
         <h2 class="bloc-titre">${LOS}Chiffres</h2>
         <dl class="chiffres">
@@ -582,7 +662,7 @@ function ecranFiche(id) {
           <div><dt>Perte estimée</dt><dd class="baisse">${fcfa(i.perte_estimee)}</dd></div>
           <div><dt>Détecté le</dt><dd>${court(i.detecte_le)}</dd></div>
           ${i.action ? `<div><dt>Réalisation de l'action</dt><dd>${fcfa(i.realisation)}</dd></div>
-          <div><dt>Écart</dt><dd>${ecart}</dd></div>` : ''}
+          <div><dt>Écart</dt><dd>${ecartAction}</dd></div>` : ''}
         </dl>
         <p class="trace">Calculés chaque matin, ventes au ${jj(i.date_donnees)}.</p>
       </section>
@@ -595,11 +675,10 @@ function ecranFiche(id) {
         <h2 class="bloc-titre">${LOS}Action corrective</h2>
         ${action}
         ${i.action_saisie_par ? `<p class="trace">Saisie par ${esc(i.action_saisie_par)} le ${horodatage(i.action_saisie_le)}</p>` : ''}
-      </section>
-    </main>
-    ${nav('incidents')}`;
-  window.scrollTo(0, 0);
+      </section>`;
+}
 
+function brancherFiche(id) {
   const enregistrer = (bouton, appel, message) => async (ev) => {
     ev.preventDefault();
     const b = $(bouton);
@@ -609,7 +688,9 @@ function ecranFiche(id) {
       if (error) throw error;
       await rechargerIncident(id);
       toast(message);
-      ecranFiche(id);
+      const y = window.scrollY;
+      router();
+      window.scrollTo(0, y);
     } catch (e) {
       toast(messageErreur(e));
       b.disabled = false;
@@ -638,23 +719,25 @@ function ecranFiche(id) {
 // Tableau de bord
 // ---------------------------------------------------------------------------
 function comp(libelle, sous, a, b) {
-  const x = variation(a, b);
+  const e = ecart(a, b);
   return `<div class="comp"><span class="comp-l">${libelle}</span><span class="comp-d">${esc(sous)}</span>
-    <span class="comp-v ${x.c}">${x.t}</span></div>`;
+    <span class="comp-v ${e.c}">${e.t}</span>${voitTaux() ? `<span class="comp-t ${e.c}">${variation(a, b).t}</span>` : ''}</div>`;
 }
 
+// Une ligne par indicateur : valeur, puis l'écart (et le taux) pour chaque comparaison
 function tableKpi(colonnes, lignes) {
-  return `<div style="--n:${colonnes.length}"><div class="kpi-tete"><span></span>${colonnes.map(([l, s]) =>
-    `<span>${l}<small>${esc(s)}</small></span>`).join('')}</div>
-    ${lignes.map(([nom, val, vars]) => `<div class="kpi"><span class="kpi-nom">${nom}<span class="kpi-val">${val}</span></span>${vars.join('')}</div>`).join('')}</div>`;
+  return `<table class="kpi-t"><thead><tr><th></th>${colonnes.map(([l, s]) =>
+    `<th>${l}<small>${esc(s)}</small></th>`).join('')}</tr></thead>
+    <tbody>${lignes.map(([nom, val, cases]) => `<tr><th scope="row">${nom}<span class="kpi-val">${val}</span></th>${
+      cases.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
 // Blocs communs : détail du jour J, mois en cours (avec barres), top des forfaits
 function blocsIndicateurs(d, sansCaJour, libCa = 'CA sell out') {
   const J = d.jour.dates.j;
   const dj = d.jour.dates, pm = d.mois.periodes;
-  const ligneJour = (nom, x) => [nom, nb(x.j), ['s1', 'm1', 'y1'].map((k) => varHtml(x.j, x[k]))];
-  const ligneMois = (nom, x, unite = '') => [nom, x.m == null ? '—' : nb(x.m) + unite, ['m1', 'y1'].map((k) => varHtml(x.m, x[k]))];
+  const ligneJour = (nom, x) => [nom, nb(x.j), ['s1', 'm1', 'y1'].map((k) => ecartHtml(x.j, x[k]))];
+  const ligneMois = (nom, x, unite = '') => [nom, x.m == null ? '—' : nb(x.m) + unite, ['m1', 'y1'].map((k) => ecartHtml(x.m, x[k]))];
 
   const serie = d.serie.m, prec = d.serie.m1;
   const max = Math.max(1, ...serie.filter((v) => v != null), ...prec.filter((v) => v != null));
@@ -674,36 +757,39 @@ function blocsIndicateurs(d, sansCaJour, libCa = 'CA sell out') {
       <span><i style="background:#B8CBDF"></i>${MOIS_LONGS[moisP]}, même quantième</span></div>`;
 
   const f = d.forfaits;
-  return `<section class="bloc">
+  return {
+    jour: `<section class="bloc">
       <h2 class="bloc-titre">${LOS}Le ${jm(J)} en détail</h2>
-      ${tableKpi([['S-1', jm(dj.s1)], ['M-1', jm(dj.m1)], ['Y-1', dj.y1 ? jm(dj.y1) + '/' + dj.y1.slice(2, 4) : '—']], [
+      ${tableKpi([['vs S-1', jm(dj.s1)], ['vs M-1', jm(dj.m1)], ['vs Y-1', dj.y1 ? jm(dj.y1) + '/' + dj.y1.slice(2, 4) : '—']], [
         ...(sansCaJour ? [] : [ligneJour(libCa, d.jour.ca)]), ligneJour('PDV actifs', d.jour.pdv), ligneJour('Abonnés actifs', d.jour.abonnes)])}
-    </section>
-    <section class="bloc">
+    </section>`,
+    mois: `<section class="bloc">
       <h2 class="bloc-titre">${LOS}${MOIS_LONGS[moisJ]}, du 1er au ${+J.slice(8)}</h2>
       ${tableKpi([['vs M-1', periode(pm.m1, J)], ['vs Y-1', periode(pm.y1, J)]], [
         ligneMois(libCa, d.mois.ca, ' F'), ligneMois('PDV actifs', d.mois.pdv), ligneMois('Abonnés actifs', d.mois.abonnes)])}
       ${barres}
-    </section>
-    ${f.length ? `<section class="bloc">
+    </section>`,
+    forfaits: f.length ? `<section class="bloc">
       <h2 class="bloc-titre">${LOS}Top ${f.length} des forfaits</h2>
       <p class="bloc-sous">${MOIS_LONGS[moisJ]}, classés par CA.</p>
       ${f.map((x, k) => `<div class="forf"><span class="forf-r">${k + 1}</span><span class="forf-n">${esc(x.nom)}</span>
         <span class="forf-ca">${fcfa(x.ca)}</span><span class="forf-s">${nb(x.ventes)} ventes</span>
         <span class="jauge"><i style="width:${(x.ca / (f[0].ca || 1) * 100).toFixed(0)}%"></i></span></div>`).join('')}
-    </section>` : ''}`;
+    </section>` : '',
+  };
 }
 
-function heroMois(libelle, d, mesure = 'CA sell out ') {
+// « cote » : contenu placé à droite du chiffre du mois sur grand écran (cartes des zones)
+function heroMois(libelle, d, mesure = 'CA sell out ', cote = '') {
   const J = d.jour.dates.j;
-  return `<div class="hero">
+  return `<div class="hero${cote ? ' hero-large' : ''}"><div class="hero-princ">
       <div class="hero-label">${esc(libelle)} · ${mesure}du 1er au ${+J.slice(8)} ${MOIS[+J.slice(5, 7) - 1]}</div>
       <div class="hero-val">${nb(d.mois.ca.m)}<small>FCFA</small></div>
       <div class="comps">
         ${comp('vs M-1', periode(d.mois.periodes.m1, J), d.mois.ca.m, d.mois.ca.m1)}
         ${comp('vs Y-1', periode(d.mois.periodes.y1, J), d.mois.ca.m, d.mois.ca.y1)}
         ${comp('J vs S-1', court(J), d.jour.ca.j, d.jour.ca.s1)}
-      </div>
+      </div></div>${cote}
     </div>`;
 }
 
@@ -715,21 +801,37 @@ function classement(liste, avecZone) {
     manq: (a, b) => (!!S.commentaires[a.cle] - !!S.commentaires[b.cle]) || (b.mois?.m || 0) - (a.mois?.m || 0),
   }[S.tri];
   const l = [...liste].sort(tri);
-  return `<div class="puces defile" role="group" aria-label="Tri" style="margin-bottom:6px">
+  const puces = `<div class="puces defile" role="group" aria-label="Tri" style="margin-bottom:6px">
       ${[['ca', 'CA du mois'], ['evo', 'Plus forte baisse'], ['manq', 'Sans commentaire']].map(([k, t]) =>
         `<button type="button" class="puce" data-tri="${k}" aria-pressed="${S.tri === k}">${t}</button>`).join('')}
-    </div>
+    </div>`;
+  const commentaire = (c) => (c ? `<b>${esc(c.cause)}</b> · ${esc(c.texte)}`
+    : `<span class="manquant">${LOS}Commentaire manquant</span>`);
+
+  // Grand écran : tableau, commentaire lisible sans déplier
+  if (GRAND.matches) {
+    return `${puces}<div class="tab-defile"><table class="clas-t">
+      <thead><tr><th>#</th><th>VM</th><th class="n">CA du mois</th><th class="n">Écart vs M-1</th>
+        <th class="n">Écart J vs S-1</th><th>Commentaire du ${jm(S.tb.j)}</th></tr></thead>
+      <tbody>${l.map((v, k) => `<tr>
+        <td class="rang">${k + 1}</td>
+        <td class="nowrap"><b>${esc(v.nom)}</b>${avecZone ? `<small>${esc(zoneLib(v.zone))}</small>` : ''}</td>
+        <td class="n chiffre">${nb(v.mois?.m)}</td>
+        <td class="n">${ecartHtml(v.mois?.m, v.mois?.m1)}</td>
+        <td class="n">${ecartHtml(v.jour?.j, v.jour?.s1)}</td>
+        <td class="clas-com">${commentaire(S.commentaires[v.cle])}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  return `${puces}
     ${l.map((v, k) => {
-      const c = S.commentaires[v.cle];
       const ouvert = S.ouvert === v.cle;
-      const j = variation(v.jour?.j, v.jour?.s1);
-      const m = variation(v.mois?.m, v.mois?.m1);
+      const j = ecart(v.jour?.j, v.jour?.s1);
+      const m = ecart(v.mois?.m, v.mois?.m1);
       return `<button type="button" class="clas" data-ouvrir="${esc(v.cle)}" aria-expanded="${ouvert}">
         <span class="clas-r">${k + 1}</span>
-        <span class="clas-n">${esc(v.nom)}<small>${avecZone ? esc(zoneLib(v.zone)) + ' · ' : ''}J vs S-1 : <span class="${j.c}">${j.t}</span></small></span>
-        <span class="clas-ca">${nb(v.mois?.m)}<small class="${m.c}">${m.t} vs M-1</small></span>
-        <span class="clas-com ${ouvert ? '' : 'ferme'}">${c ? `<b>${esc(c.cause)}</b> · ${esc(c.texte)}`
-          : `<span class="manquant">${LOS}Commentaire manquant</span>`}</span>
+        <span class="clas-n">${esc(v.nom)}<small>${avecZone ? esc(zoneLib(v.zone)) + ' · ' : ''}J vs S-1 : <span class="${j.c}">${j.t} (${variation(v.jour?.j, v.jour?.s1).t})</span></small></span>
+        <span class="clas-ca">${nb(v.mois?.m)}<small class="${m.c}">${m.t} · ${variation(v.mois?.m, v.mois?.m1).t}</small></span>
+        <span class="clas-com ${ouvert ? '' : 'ferme'}">${commentaire(S.commentaires[v.cle])}</span>
       </button>`;
     }).join('')}`;
 }
@@ -745,9 +847,10 @@ function blocCommentaire(d) {
         <div class="pile"><button class="btn btn-sec" type="button" id="com-modif">Modifier</button></div>
       </section>`;
   }
-  const x = variation(d.jour.ca.j, d.jour.ca.s1);
-  const consigne = x.v == null ? `Expliquez l'évolution de vos ventes du ${jm(J)}.`
-    : `Expliquez votre ${x.v < 0 ? 'baisse' : 'hausse'} de ${x.t.replace(/^[+−]/, '')} par rapport au ${JOURS_LONGS[date(d.jour.dates.s1).getDay()]} ${jm(d.jour.dates.s1)}.`;
+  const a = d.jour.ca.j, b = d.jour.ca.s1;
+  const diff = a == null || b == null ? 0 : Math.round(a) - Math.round(b);
+  const consigne = !diff ? `Expliquez l'évolution de vos ventes du ${jm(J)}.`
+    : `Expliquez votre ${diff < 0 ? 'baisse' : 'hausse'} de ${fcfa(Math.abs(diff))} par rapport au ${JOURS_LONGS[date(d.jour.dates.s1).getDay()]} ${jm(d.jour.dates.s1)}.`;
   return `<section class="bloc" id="bloc-com">
       <h2 class="bloc-titre">${LOS}Mon commentaire du ${jm(J)}</h2>
       <p class="bloc-sous">${esc(consigne)}</p>
@@ -768,7 +871,7 @@ function ecranTableau() {
   if (!tb?.ligne) {
     const message = tb?.erreur ? `Tableau de bord indisponible : ${tb.erreur}`
       : 'Pas encore de données : le tableau de bord est mis à jour chaque matin.';
-    app.innerHTML = `<header class="app-tete">${teteLigne()}</header>
+    app.innerHTML = `<header class="app-tete">${teteLigne('tableau')}</header>
       <main class="app-corps"><section class="bloc"><p class="lecture">${esc(message)}</p>
         <div class="pile"><button class="btn btn-sec" id="actualiser">Actualiser</button></div></section></main>
       ${nav('tableau')}`;
@@ -777,6 +880,9 @@ function ecranTableau() {
   }
   const d = tb.ligne.donnees;
   const J = d.jour.dates.j;
+  const grand = GRAND.matches;
+  // Grand écran : deux colonnes ; téléphone : les blocs l'un sous l'autre
+  const colonnes = (gauche, droite) => `<div class="colonnes"><div class="col-princ">${gauche}</div><div class="col-cote">${droite}</div></div>`;
   let tete, corps;
 
   if (p.role === 'vm') {
@@ -793,47 +899,57 @@ function ecranTableau() {
         </div>
         ${commentaireManquant() && !S.editionCom ? `<button class="alerte" type="button" data-defile="bloc-com">${ico('bulle', 1)}<span>Commentaire du jour à saisir</span>${ico('droite', 1)}</button>` : ''}
       </div>`;
-    const blocs = blocsIndicateurs(d, true);
-    const i = blocs.indexOf('</section>') + '</section>'.length;   // commentaire après le détail du jour
-    corps = blocs.slice(0, i) + blocCommentaire(d) + blocs.slice(i) + `
-      <section class="bloc rappel">
+    const b = blocsIndicateurs(d, true);
+    const rappel = `<section class="bloc rappel">
         <h2 class="bloc-titre">${LOS}Mes incidents ouverts</h2>
         <div class="gros"><div><b>${ouverts.length}</b><span>${aJustifier} à justifier</span></div>
           <div><b>${fcfa(perte)}</b><span>de perte estimée</span></div></div>
         <a class="btn btn-action" href="#/incidents">${aJustifier ? 'Justifier mes incidents' : 'Voir mes incidents'} ${ico('droite', 1)}</a>
       </section>`;
+    corps = grand ? colonnes(b.jour + blocCommentaire(d) + rappel, b.mois + b.forfaits)
+      : b.jour + blocCommentaire(d) + b.mois + b.forfaits + rappel;
   } else if (p.role === 'superviseur') {
     const manq = tb.vms.filter((v) => !S.commentaires[v.cle]).length;
     tete = heroMois(zoneLib(p.zone), d);
-    corps = `<section class="bloc">
+    const vms = `<section class="bloc">
         <h2 class="bloc-titre">${LOS}Mes VM</h2>
         <p class="bloc-sous">CA du mois et commentaire du ${jm(J)}.${manq ? ` <span class="manquant">${manq} commentaire${manq > 1 ? 's' : ''} manquant${manq > 1 ? 's' : ''} sur ${tb.vms.length}</span>` : ''}</p>
         ${classement(tb.vms, false)}
-      </section>${blocsIndicateurs(d)}`;
+      </section>`;
+    const b = blocsIndicateurs(d);
+    corps = grand ? colonnes(vms, b.jour + b.mois + b.forfaits) : vms + b.jour + b.mois + b.forfaits;
   } else {
     const vms = tb.vms.filter((v) => !S.zoneFiltre || v.zone === S.zoneFiltre);
-    const zones = [...tb.zones].sort((a, b) => a.cle.localeCompare(b.cle));
-    tete = heroMois('Sell out Zones 1-2', d, '');
-    corps = `<section class="bloc">
+    const zones = [...tb.zones].sort((a, b) => a.cle.localeCompare(b.cle)).map((z) => {
+      const lz = tb.vms.filter((v) => v.zone === z.cle);
+      return { z, nbVm: lz.length, manq: lz.filter((v) => !S.commentaires[v.cle]).length };
+    });
+    const sansCom = (manq, taille) => (manq ? ` · <span class="manquant"${taille ? ` style="font-size:${taille}"` : ''}>${manq} sans commentaire</span>` : '');
+    const cartes = zones.map(({ z, nbVm, manq }) => `<div class="zone-c">
+        <span class="zone-c-n">${esc(z.nom)}</span>
+        <span class="zone-c-ca">${nb(z.mois?.m)}</span>
+        <span class="zone-c-v"><span>vs M-1</span>${ecartHtml(z.mois?.m, z.mois?.m1, 'var en-ligne')}</span>
+        <span class="zone-c-v"><span>vs Y-1</span>${ecartHtml(z.mois?.m, z.mois?.y1, 'var en-ligne')}</span>
+        <small>${nbVm} VM${sansCom(manq)}</small></div>`).join('');
+    tete = heroMois('Sell out Zones 1-2', d, '', grand ? `<div class="zones-c">${cartes}</div>` : '');
+    const parZone = `<section class="bloc">
         <h2 class="bloc-titre">${LOS}Par zone</h2>
-        ${zones.map((z) => {
-          const lz = tb.vms.filter((v) => v.zone === z.cle);
-          const manq = lz.filter((v) => !S.commentaires[v.cle]).length;
-          return `<div class="zone-l"><span class="nm">${esc(z.nom)}<small>${lz.length} VM${manq ? ` · <span class="manquant" style="font-size:12.5px">${manq} sans commentaire</span>` : ''}</small></span>
+        ${zones.map(({ z, nbVm, manq }) => `<div class="zone-l"><span class="nm">${esc(z.nom)}<small>${nbVm} VM${sansCom(manq, '12.5px')}</small></span>
             <span class="clas-ca">${nb(z.mois?.m)}</span>
-            <span class="var">${varHtml(z.mois?.m, z.mois?.m1, '')}<br>${varHtml(z.mois?.m, z.mois?.y1, '')}</span></div>`;
-        }).join('')}
-        <p class="trace">Variations : vs M-1, puis vs Y-1.</p>
-      </section>
-      <section class="bloc">
+            <span class="var">${ecartHtml(z.mois?.m, z.mois?.m1, 'en-ligne')}<br>${ecartHtml(z.mois?.m, z.mois?.y1, 'en-ligne')}</span></div>`).join('')}
+        <p class="trace">Écarts : vs M-1, puis vs Y-1.</p>
+      </section>`;
+    const clas = `<section class="bloc">
         <h2 class="bloc-titre">${LOS}Classement des VM</h2>
         <div class="puces defile" role="group" aria-label="Zone" style="margin-bottom:8px">${[['', 'Toutes'], ['ZONE1', 'Zone 1'], ['ZONE2', 'Zone 2']].map(([k, t]) =>
           `<button type="button" class="puce" data-zone="${k}" aria-pressed="${S.zoneFiltre === k}">${t}</button>`).join('')}</div>
         ${classement(vms, !S.zoneFiltre)}
-      </section>${blocsIndicateurs(d, false, 'Sell out Zones 1-2')}`;
+      </section>`;
+    const b = blocsIndicateurs(d, false, 'Sell out Zones 1-2');
+    corps = grand ? colonnes(clas, b.jour + b.mois + b.forfaits) : parZone + clas + b.jour + b.mois + b.forfaits;
   }
 
-  app.innerHTML = `<header class="app-tete">${teteLigne()}${tete}</header>
+  app.innerHTML = `<header class="app-tete">${teteLigne('tableau')}${tete}</header>
     <main class="app-corps">${corps}
       <p class="resume"><span>Ventes au ${jj(J)} · calculées chaque matin</span>
         <button type="button" class="lien" id="actualiser">Actualiser</button></p>
@@ -896,8 +1012,8 @@ function defiler() {
 // ---------------------------------------------------------------------------
 function ecranCompte() {
   const p = S.profil;
-  app.innerHTML = `<header class="app-tete">${teteLigne()}</header>
-    <main class="app-corps"><section class="bloc">
+  app.innerHTML = `<header class="app-tete">${teteLigne('compte')}</header>
+    <main class="app-corps etroit"><section class="bloc">
       <h2 class="bloc-titre">${LOS}${esc(p.nom)}</h2>
       <p class="bloc-sous">${esc(p.login)} · ${esc(ROLES[p.role])}${p.zone ? ' · ' + esc(zoneLib(p.zone)) : ''}</p>
       <div class="pile">
@@ -915,8 +1031,8 @@ function ecranCompte() {
 // Administration des comptes
 // ---------------------------------------------------------------------------
 async function ecranAdmin() {
-  app.innerHTML = `<header class="app-tete">${teteRetour('#/compte', 'Compte', '<b>Comptes</b>')}</header>
-    <main class="app-corps"><p class="centre">Chargement…</p></main>${nav('compte')}`;
+  app.innerHTML = `<header class="app-tete">${teteRetour('#/compte', 'Compte', '<b>Comptes</b>', 'compte')}</header>
+    <main class="app-corps etroit"><p class="centre">Chargement…</p></main>${nav('compte')}`;
   let comptes;
   try {
     const { data, error } = await sb.from('profils').select('*').order('role').order('zone').order('login');
